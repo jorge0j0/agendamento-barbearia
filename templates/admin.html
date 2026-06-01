@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Painel Admin{% endblock %}
+
+{% block extra_style %}
+<style>
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px; }
+  .stat { background: var(--bg2); border: 1px solid var(--border); padding: 18px; border-radius: 6px; }
+  .stat-num { font-size: 30px; color: var(--gold); font-weight: 700; font-family: 'Playfair Display', serif; }
+  .stat-lbl { font-size: 10px; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; margin-top: 6px; }
+  .agenda-item { background: var(--bg2); border: 1px solid var(--border); padding: 14px 16px; border-radius: 6px; display: flex; align-items: center; gap: 14px; margin-bottom: 8px; transition: opacity 0.3s; }
+  .agenda-item.cancelado { opacity: 0.4; border-style: dashed; }
+  .agenda-hora { font-size: 20px; color: var(--gold); font-weight: 700; min-width: 60px; }
+  .agenda-info { flex: 1; }
+  .agenda-nome { font-size: 14px; color: var(--text); }
+  .agenda-det { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .action-btns { display: flex; gap: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:28px;">
+    <div>
+      <div style="font-family:'Playfair Display',serif; font-size:22px; color:var(--gold)">Painel do Administrador</div>
+      <div style="font-size:11px; color:var(--muted); letter-spacing:2px; margin-top:4px;">{{ hoje }}</div>
+    </div>
+    <span style="font-size:11px; color:var(--muted);">{{ usuario.nome }}</span>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat">
+      <div class="stat-num" id="s-total">{{ agendamentos|length }}</div>
+      <div class="stat-lbl">Agendamentos hoje</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="s-conf">{{ confirmados }}</div>
+      <div class="stat-lbl">Confirmados</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">R$ <span id="s-fat">{{ faturamento|int }}</span></div>
+      <div class="stat-lbl">Faturamento previsto</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">{{ clientes_total }}</div>
+      <div class="stat-lbl">Clientes cadastrados</div>
+    </div>
+  </div>
+
+  <!-- LISTA DE AGENDAMENTOS -->
+  <div class="section-title">Agenda de hoje</div>
+
+  {% if agendamentos %}
+    {% for ag in agendamentos %}
+    <div class="agenda-item {{ ag.status }}" id="item-{{ ag.id }}" data-preco="{{ ag.preco|int }}">
+      <div class="agenda-hora">{{ ag.horario }}</div>
+      <div class="agenda-info">
+        <div class="agenda-nome">{{ ag.cliente.nome }}</div>
+        <div class="agenda-det">{{ ag.servico }} · R$ {{ ag.preco|int }} · {{ ag.cliente.email }}</div>
+      </div>
+      <span class="badge {{ 'badge-green' if ag.status == 'confirmado' else 'badge-red' }}" id="badge-{{ ag.id }}">{{ ag.status }}</span>
+      <div class="action-btns">
+        <button id="btn-{{ ag.id }}"
+          class="{{ 'btn-danger' if ag.status == 'confirmado' else 'btn-success' }}"
+          onclick="toggleAgendamento({{ ag.id }}, '{{ ag.status }}')">
+          {{ 'Cancelar' if ag.status == 'confirmado' else 'Restaurar' }}
+        </button>
+        <button class="btn-danger" onclick="excluirAgendamento({{ ag.id }})">✕</button>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p style="font-size:13px; color:var(--muted);">Nenhum agendamento para hoje.</p>
+  {% endif %}
+
+</div>
+
+<script>
+async function toggleAgendamento(id, statusAtual) {
+  const rota = statusAtual === 'confirmado' ? `/admin/cancelar/${id}` : `/admin/restaurar/${id}`;
+  const res = await fetch(rota, { method: 'POST' });
+  if (!res.ok) return;
+  const item = document.getElementById('item-' + id);
+  const badge = document.getElementById('badge-' + id);
+  const btn   = document.getElementById('btn-' + id);
+  if (statusAtual === 'confirmado') {
+    item.classList.add('cancelado');
+    badge.className = 'badge badge-red';
+    badge.textContent = 'cancelado';
+    btn.className = 'btn-success';
+    btn.textContent = 'Restaurar';
+    btn.onclick = () => toggleAgendamento(id, 'cancelado');
+  } else {
+    item.classList.remove('cancelado');
+    badge.className = 'badge badge-green';
+    badge.textContent = 'confirmado';
+    btn.className = 'btn-danger';
+    btn.textContent = 'Cancelar';
+    btn.onclick = () => toggleAgendamento(id, 'confirmado');
+  }
+  atualizarStats();
+}
+
+async function excluirAgendamento(id) {
+  if (!confirm('Excluir permanentemente este agendamento?')) return;
+  const res = await fetch(`/admin/excluir/${id}`, { method: 'POST' });
+  if (res.ok) {
+    document.getElementById('item-' + id).remove();
+    atualizarStats();
+  }
+}
+
+function atualizarStats() {
+  const todos = document.querySelectorAll('.agenda-item');
+  const conf  = document.querySelectorAll('.agenda-item:not(.cancelado)');
+  let fat = 0;
+  conf.forEach(i => { fat += parseInt(i.dataset.preco || 0); });
+  document.getElementById('s-total').textContent = todos.length;
+  document.getElementById('s-conf').textContent  = conf.length;
+  document.getElementById('s-fat').textContent   = fat;
+}
+</script>
+{% endblock %}
